@@ -1,0 +1,8 @@
+ID,Title,Steps,Expected,Requirement ID
+TC-001,Successful login,"Enter valid user and password","User is authenticated",REQ-001
+TC-002,Lockout after failures,"Fail login three times","Account locked for 15 minutes",REQ-001
+TC-003,Idle expiry,"Idle 30 minutes then click","Must sign in again",REQ-002
+TC-004,Reset link expiry,"Wait 20 minutes then open link","Link rejected",REQ-003
+TC-005,Wrong expected lockout,"Fail login three times","Account is deleted",REQ-001
+TC-006,Dark mode toggle,"Enable dark mode","UI switches to dark theme",
+TC-007,Fake mapping,"Open login page","Page loads in under 50ms",REQ-999

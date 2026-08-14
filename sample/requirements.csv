@@ -1,0 +1,5 @@
+ID,Title,Description,Priority
+REQ-001,User login,"Authenticate with username and password. Lock 15 minutes after three failed attempts.",must
+REQ-002,Session timeout,"Idle sessions expire after 30 minutes.",must
+REQ-003,Password reset,"Reset via email OTP link expiring in 20 minutes.",should
+REQ-004,Audit log,"Log success and failure with timestamp and IP.",must

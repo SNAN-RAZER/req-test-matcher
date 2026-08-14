@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Req-Test Matcher</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Requirement ↔ test matcher</h1>
+      <p>
+        Upload requirement and test-case files (PDF, Excel, PowerPoint, Word, images).
+        A local <strong>agent swarm</strong> unpacks nested docs, then vision / table / semantic
+        specialists feed extractor, knowledge-graph, judge, and coverage agents.
+        Matching uses a <strong>knowledge graph</strong> (not vector RAG). Ollama stays on this machine.
+      </p>
+    </header>
+
+    {% if ollama.ok %}
+    <div class="status ok">
+      Ollama at <code>{{ ollama.host }}</code> is up.
+      Chat: <code>{{ settings.ollama_chat_model }}</code>
+      {% if not ollama.chat_present %} — <strong>not found in <code>ollama list</code>. Pull it first.</strong>{% endif %}
+      · Vision: <code>{{ settings.ollama_vision_model }}</code>
+      {% if not ollama.vision_present %} — <strong>optional. Run <code>ollama pull llava:7b</code> for screenshots/scans.</strong>{% endif %}
+    </div>
+    {% else %}
+    <div class="status bad">
+      Cannot reach Ollama at <code>{{ ollama.host }}</code>.
+      {{ ollama.error }}
+      Start it with <code>ollama serve</code> and pull <code>{{ settings.ollama_chat_model }}</code>.
+    </div>
+    {% endif %}
+
+    <form id="form">
+      <div class="grid">
+        <div class="card">
+          <h2>Requirements</h2>
+          <label class="drop">Drop or choose requirement documents
+            <input id="req" type="file" name="req_files" multiple accept=".pdf,.xlsx,.xlsm,.xls,.pptx,.ppt,.docx,.doc,.txt,.md,.csv,.png,.jpg,.jpeg,.webp" />
+          </label>
+          <div class="files" id="req-list"></div>
+        </div>
+        <div class="card">
+          <h2>Test cases</h2>
+          <label class="drop">Drop or choose test-case documents
+            <input id="test" type="file" name="test_files" multiple accept=".pdf,.xlsx,.xlsm,.xls,.pptx,.ppt,.docx,.doc,.txt,.md,.csv,.png,.jpg,.jpeg,.webp" />
+          </label>
+          <div class="files" id="test-list"></div>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" id="go">Run agent swarm</button>
+        <span class="hint">Specialists run locally. Vision is skipped if llava is not pulled. 8B on CPU is slow.</span>
+      </div>
+    </form>
+
+    <p id="err" class="err hidden"></p>
+    <div id="out" class="hidden">
+      <p id="summary"></p>
+      <div class="kpis" id="kpis"></div>
+      <div class="card" style="margin-bottom:16px">
+        <h2>Agent swarm</h2>
+        <ol class="trace" id="trace"></ol>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <h2>Knowledge graph</h2>
+        <p class="hint" id="kg-meta"></p>
+        <canvas id="kg" width="1040" height="420"></canvas>
+        <p class="hint">Green = requirement · Blue = test · Purple = document · Gold = shared concept · Pink = coverage gap</p>
+      </div>
+      <div class="card">
+        <h2>Traceability</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Test</th>
+              <th>Requirement</th>
+              <th>Verdict</th>
+              <th>Score</th>
+              <th>Why / issues</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <footer>
+      Private by design: Ollama on localhost, knowledge graph on disk (no Chroma/RAG).
+    </footer>
+  </div>
+  <script src="/static/kg.js"></script>
+  <script>
+    const names = (input, target) => {
+      target.textContent = [...input.files].map(f => f.name).join("\n") || "";
+    };
+    req.onchange = () => names(req, document.getElementById("req-list"));
+    test.onchange = () => names(test, document.getElementById("test-list"));
+
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const err = document.getElementById("err");
+      const out = document.getElementById("out");
+      const go = document.getElementById("go");
+      err.classList.add("hidden");
+      out.classList.add("hidden");
+      go.disabled = true;
+      go.textContent = "Swarm running…";
+      const data = new FormData();
+      for (const f of req.files) data.append("req_files", f);
+      for (const f of test.files) data.append("test_files", f);
+      try {
+        const res = await fetch("/api/analyze", { method: "POST", body: data });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.detail || res.statusText);
+        render(body);
+      } catch (ex) {
+        err.textContent = ex.message || String(ex);
+        err.classList.remove("hidden");
+      } finally {
+        go.disabled = false;
+        go.textContent = "Run agent swarm";
+      }
+    };
+
+    function render(r) {
+      document.getElementById("out").classList.remove("hidden");
+      document.getElementById("summary").textContent = r.summary + "  Chat: " + r.model + (r.vision_model ? "  Vision: " + r.vision_model : "");
+      const kpis = [
+        ["Requirements", r.requirements.length],
+        ["Test cases", r.test_cases.length],
+        ["Wrong tests", r.wrong_tests.length],
+        ["Orphan tests", r.orphan_tests.length],
+        ["Uncovered reqs", r.uncovered_requirements.length],
+      ];
+      document.getElementById("kpis").innerHTML = kpis.map(([l,v]) =>
+        `<div class="kpi"><b>${v}</b><span>${l}</span></div>`
+      ).join("");
+      document.getElementById("trace").innerHTML = (r.agent_trace || []).map(t =>
+        `<li><strong>${esc(t.agent)}</strong> <span class="muted">${esc(t.role)}</span><br>${esc(t.action)} — ${esc(t.detail)}</li>`
+      ).join("");
+      document.getElementById("kg-meta").textContent =
+        (r.knowledge_graph && r.knowledge_graph.node_count != null)
+          ? (r.knowledge_graph.node_count + " nodes, " + r.knowledge_graph.edge_count + " edges (concepts with a single mention hidden)")
+          : "";
+      renderKnowledgeGraph(document.getElementById("kg"), r.knowledge_graph || {nodes:[], edges:[]});
+      document.getElementById("rows").innerHTML = (r.matches || []).map(m => `
+        <tr>
+          <td>${esc(m.test_id)}</td>
+          <td>${esc(m.requirement_id || "—")}</td>
+          <td><span class="pill ${esc(m.verdict)}">${esc(m.verdict)}</span></td>
+          <td>${Number(m.score).toFixed(2)}</td>
+          <td>${esc(m.rationale)} ${m.issues && m.issues.length ? "<br><em>" + m.issues.map(esc).join("; ") + "</em>" : ""}</td>
+        </tr>
+      `).join("");
+    }
+    function esc(s) {
+        return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+    }
+  </script>
+</body>
+</html>
