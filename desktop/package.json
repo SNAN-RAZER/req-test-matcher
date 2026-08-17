@@ -1,0 +1,13 @@
+{
+  "name": "req-test-matcher-desktop",
+  "private": true,
+  "version": "0.2.0",
+  "description": "Desktop shell for the local Req-Test Matcher",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^35.1.5"
+  }
+}

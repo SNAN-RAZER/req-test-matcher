@@ -72,6 +72,24 @@ After a match, use **Download Excel workbook**. Sheets: Summary, Traceability, R
 
 The graph is interactive: zoom, pan, drag nodes, click a node or table row, toggle kinds.
 
+## Electron desktop app
+
+Same local stack, in a window instead of Chrome. The shell starts the Python API (if it is not already running) and loads `http://127.0.0.1:8080`. Nothing is sent to a cloud UI.
+
+```bash
+cd ~/Projects/req-test-matcher
+# API + React build (once)
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cd web && npm install && npm run build && cd ..
+
+cd desktop
+npm install
+npm start
+```
+
+Ollama must still be running on this machine (`ollama serve`). Close the window to stop the API process this app started.
+
 Ollama models:
 
 ```bash
